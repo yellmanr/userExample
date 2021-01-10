@@ -7,6 +7,9 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.yellman.example.user.exception.DuplicateException;
+import com.yellman.example.user.exception.NotFoundException;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -16,8 +19,8 @@ public class UserService {
   @Autowired
   private UserRepository repository;
 
-  public Optional<User> get(Integer id) {
-	  return repository.findById(id);
+  public User get(Integer id) {
+	  return repository.findById(id).orElseThrow(() -> new NotFoundException("User ID not valid"));
   }
   
   /*
@@ -35,7 +38,7 @@ public class UserService {
   */
   public User save(User user) throws Exception {
 	  if(repository.findByFirstNameAndLastName(user.getFirstName(), user.getLastName()).isPresent()) {
-	  	 throw new Exception ("User with same name exists");
+	  	 throw new DuplicateException ("User with same name exists");
 	  }
 
 	  return repository.save(user);

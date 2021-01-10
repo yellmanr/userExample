@@ -14,6 +14,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
+import com.yellman.example.user.exception.DuplicateException;
 import lombok.extern.slf4j.Slf4j;
 
 @ExtendWith(SpringExtension.class)
@@ -80,7 +81,7 @@ class UserServiceUnitTest {
         Mockito.when(userRepository.findByFirstNameAndLastName(existingUser.getFirstName(), existingUser.getLastName()))
         .thenReturn(Optional.of(existingUser));
 		
-	    Assertions.assertThrows(Exception.class, () -> {
+	    Assertions.assertThrows(DuplicateException.class, () -> {
 	    	userService.save(existingUser);
 	      });
 	}
