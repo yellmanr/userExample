@@ -45,13 +45,13 @@ public class UserController {
     
     @PostMapping("/user")
     @Secured("ROLE_EDITOR")
-    public ResponseEntity<User> create(@Valid @RequestBody User user) throws Exception {
+    public ResponseEntity<User> create(@Valid @RequestBody User user) {
         return new ResponseEntity<User>(userService.save(user), HttpStatus.CREATED);
     }
 	
     @PutMapping("/user/{id}")
     @Secured("ROLE_EDITOR")
-    public User update(@Valid @RequestBody User user, @PathVariable Integer id) throws Exception {
+    public User update(@Valid @RequestBody User user, @PathVariable Integer id) {
         return userService.save(user);
     }
     

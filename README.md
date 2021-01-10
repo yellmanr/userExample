@@ -45,6 +45,8 @@ This is an API.  You can run in your IDE or using Postman.  A postman collection
 * Spring Boot Data JPA
 * Spring Boot Test
 * Spring Boot Security
+* Spring Boot Security Test
+* Spring Boot Validation
 * Spring Boot DevTools
 * Lombok
 * H2
@@ -68,10 +70,99 @@ Spring Data JPA provides three repository types for relational databases to hand
 
 `JpaRepository` extends `PagingAndSortingRepository` which in turn extends `CrudRepository`; because of this inheritance relationship, the JpaRepository contains the full API of CrudRepository and PagingAndSortingRepository.  
 
-### **Lombok** ###
-Use Lombok to reduce the amount of boilerplate code.  Use these annotations: 
-`@Data` for domain and DTO classes
-`@Slf4J` for logging in all classes
+### **Web Validation & Exception Handling** ###
+
+Use javax.validation to validate data coming in to Controller methods.  Three pieces are needed to do this:
+
+#### Indicate Valid RequestBody ####
+@Valid annotation to indicate the RequestBody object should be validated
+
+	public ResponseEntity<User> create(@Valid @RequestBody User user) {
+
+#### Annotate attribute constraints ####
+javax.validation.constraints annotations in the domain object for data validation in the REST service
+
+	@NotBlank(message = "First Name cannot be empty")
+	private String firstName;
+   
+	@NotBlank(message = "Last Name cannot be empty")
+	private String lastName;
+
+
+#### Attribute Validation Exception Handling ####
+
+Handle MethodArgumentNotValidException.class by mapping to BAD_REQUEST Http.status and providing clean field error list
+
+	@ResponseStatus(HttpStatus.BAD_REQUEST)
+	@ExceptionHandler(MethodArgumentNotValidException.class)
+	public Map<String, String> handleValidationExceptions(MethodArgumentNotValidException ex) {
+		Map<String, String> errors = new HashMap<>();
+		ex.getBindingResult().getAllErrors().forEach((error) -> {
+		    String fieldName = ((FieldError) error).getField();
+		    String errorMessage = error.getDefaultMessage();
+            	    errors.put(fieldName, errorMessage);
+        	});
+        	return errors;
+    	}
+
+This results in a Response Body that looks like this:
+
+	{
+	    "firstName": "First Name cannot be empty",
+	    "lastName": "Last Name cannot be empty"
+	}
+
+#### Custom Exception Handling ####
+Annotate custom Exception with @ResponseStatus to map them to HttpStatus responses.  When a service called by a controller throws the custom exception Spring will return the correct HttpStatus.51
+
+	@ResponseStatus(HttpStatus.BAD_REQUEST)
+	public class DuplicateException extends RuntimeException {
+
+### **Spring Security** ###
+Create a WebSecurity configuration with a HttpSecurity configuration and an in-memory AuthenticationManagerBuilder  
+
+
+#### WebSecurityConfig ####
+	
+	@Configuration
+	@EnableGlobalMethodSecurity(prePostEnabled=true, securedEnabled=true)
+	public class WebSecurityConfig extends WebSecurityConfigurerAdapter{...}
+
+
+
+### HttpSecurity ###
+In our case any request requires authentication.  Spring will provide a basic authentication form.
+
+	protected void configure(final HttpSecurity http) throws Exception {
+		http
+			//  To work with Postman needed this line.
+		    .csrf().disable()
+		    .antMatcher("/**")
+		    .authorizeRequests()
+		    .anyRequest().authenticated()
+		    .and().httpBasic()
+		    ;
+	}
+
+### In memory AuthenticationManagerBuilder ###
+For quick implementation this demo uses an in-memory   with a VIEWER and EDITOR role and three users.  sam is only a VIEWER.  carlos and john are both VIEWER and EDITOR.
+
+	    @Override
+	    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+	        PasswordEncoder encoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
+	        auth.inMemoryAuthentication()
+	         .passwordEncoder(encoder)
+	         .withUser("sam").password(encoder.encode("sam")).roles("VIEWER")
+	         .and().withUser("carlos").password(encoder.encode("carlos")).roles("VIEWER", "EDITOR")
+	         .and().withUser("john").password(encoder.encode("john")).roles("VIEWER", "EDITOR");
+	    }
+
+#### Secure Controller Methods ####
+To secure individual methods in the controller add the @Secure annotation with a list of roles. NOTE that the role list must start with "ROLE_" for Spring to make the mapping to the role.
+	@Secured("ROLE_EDITOR")
+
+### **Data/Model Object Consistency** ###
+Use Lombok to reduce the amount of boilerplate code.  
 
 #### @Data ####
 Use the @Data annotation to implement all of these annotations: @ToString, @EqualsAndHashCode, @Getter on all fields, @Setter on all non-final fields, and @RequiredArgsConstructor.  
@@ -144,6 +235,14 @@ Simple Example class:
 
 ### **Automated Testing** ###
 
+There are a lot of packages involved in testing that are provided by spring-boot-starter-test or -web, including:  
+
+* org.assertj
+* org.junit.jupiter
+* org.mockito
+* org.hamcrest
+* com.fasterxml.jackson
+
 #### Repository Integration Testing ####
 Create integration tests for custom repository methods.  Use @DataJpaTest to standard setup of a persistence layer with an in-memory H2 database and an JPA EntityManager.
 
@@ -151,7 +250,38 @@ Create integration tests for custom repository methods.  Use @DataJpaTest to sta
 Create unit tests for service methods with business logic to be tested.  Use @MockBean for repositories to isolate testing business logic. 
 
 #### Controller Testing ####
+Create unit test for all controller methods to validate the RequestResponse and HttpStatus.  Use MockMvc to Autowire the Spring MVC processing for your Controller.  Use @MokeBean for services to isolate testing of web layer processing of expected Results and Exceptions.  Use @WithMockUser to work with in-memory web security 
 
+	@ExtendWith(SpringExtension.class)
+	@WebMvcTest(UserController.class)
+	class UserControllerUnitTest {
+		
+	    @Autowired
+	    private MockMvc mvc;
+	
+	    @MockBean
+	    private UserService service;
+		
+		@Test
+		@DisplayName("GET /user/1")
+		@WithMockUser(username = "sam", roles = { "VIEWER" })
+		void testGetById() throws Exception {
+		    User alex = User.builder()
+		    		      .id(1)
+		    		      .firstName("Alex")
+		    		      .lastName("Bell")
+		    		      .build();
+	
+		    doReturn(alex).when(service).get(1);
+	
+		    mvc.perform(get("/user/{id}", 1)
+		      .contentType(MediaType.APPLICATION_JSON))
+		      .andExpect(status().isOk())
+		      .andExpect(jsonPath("$.id", is(1)))
+		      .andExpect(jsonPath("$.firstName", is(alex.getFirstName())))
+		      .andExpect(jsonPath("$.lastName", is(alex.getLastName())));
+		}
+	}
 
 
 ## Credits
