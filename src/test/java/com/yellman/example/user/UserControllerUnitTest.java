@@ -5,8 +5,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.mockito.Mockito.*;
 import static org.hamcrest.Matchers.*;
 
-import java.util.Optional;
-
 import org.assertj.core.util.Lists;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +19,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yellman.example.user.exception.DuplicateException;
+import com.yellman.example.user.exception.NotFoundException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,7 +34,24 @@ class UserControllerUnitTest {
 
     @MockBean
     private UserService service;
-
+	
+	@Test
+	@DisplayName("GET /user NOT AUTHORIZED")
+	void testGetAllNoAuth() throws Exception {
+	    mvc.perform(get("/user")
+	      .contentType(MediaType.APPLICATION_JSON))
+	      .andExpect(status().isUnauthorized());
+	}
+	
+	@Test
+	@DisplayName("GET /user FORBIDDEN")
+	@WithMockUser(username = "sam", roles = { "VIEW" })
+	void testGetAllWrongRole() throws Exception {
+	    mvc.perform(get("/user")
+	      .contentType(MediaType.APPLICATION_JSON))
+	      .andExpect(status().isForbidden());
+	}
+    
 	@Test
 	@DisplayName("GET /user")
 	@WithMockUser(username = "sam", roles = { "VIEWER" })
@@ -51,14 +68,6 @@ class UserControllerUnitTest {
 	}
 	
 	@Test
-	@DisplayName("GET /user NOT AUTHORIZED")
-	void testGetAllNoAuth() throws Exception {
-	    mvc.perform(get("/user")
-	      .contentType(MediaType.APPLICATION_JSON))
-	      .andExpect(status().isUnauthorized());
-	}
-	
-	@Test
 	@DisplayName("GET /user/1")
 	@WithMockUser(username = "sam", roles = { "VIEWER" })
 	void testGetById() throws Exception {
@@ -68,7 +77,7 @@ class UserControllerUnitTest {
 	    		      .lastName("Bell")
 	    		      .build();
 
-	    doReturn(Optional.of(alex)).when(service).get(1);
+	    doReturn(alex).when(service).get(1);
 
 	    mvc.perform(get("/user/{id}", 1)
 	      .contentType(MediaType.APPLICATION_JSON))
@@ -83,7 +92,7 @@ class UserControllerUnitTest {
 	@WithMockUser(username = "sam", roles = { "VIEWER" })
 	void testGetByIdNotFound() throws Exception {
 
-	    doReturn(Optional.empty()).when(service).get(1);
+	    doThrow(new NotFoundException("User ID not valid")).when(service).get(1);
 
 	    mvc.perform(get("/user/{id}", 1)
 	      .contentType(MediaType.APPLICATION_JSON))
@@ -130,6 +139,20 @@ class UserControllerUnitTest {
 	}
 
 	@Test
+	@DisplayName("POST /user DUPLICATE")
+	@WithMockUser(username = "john", roles = { "EDITOR" })
+	void testCreateDuplicate() throws Exception {
+		
+		User userToPost = new User("Alex", "Bell");
+		
+		doThrow(new DuplicateException ("User with same name exists")).when(service).save(any());
+		
+	    mvc.perform(post("/user")
+	 	   .contentType(MediaType.APPLICATION_JSON)
+	 	   .content(asJsonString(userToPost)))
+	       .andExpect(status().isBadRequest());
+	}
+	@Test
 	@DisplayName("POST /user NO LASTNAME")
 	@WithMockUser(username = "john", roles = { "EDITOR" })
 	void testCreateMissingData() throws Exception {
@@ -139,13 +162,10 @@ class UserControllerUnitTest {
 		ObjectMapper mapper = new ObjectMapper();
 		ObjectNode rootNode = mapper.createObjectNode();
 		rootNode.put("firstName", "Alex");
-
-		doThrow(new Exception ("User with same name exists")).when(service).save(any());
-		
-	    mvc.perform(post("/user")
+		mvc.perform(post("/user")
 	       .contentType(MediaType.APPLICATION_JSON)
 	       .content(mapper.writeValueAsString(rootNode)))
-	       .andExpect(status().isCreated());
+	       .andExpect(status().isBadRequest());
 	}
 	
 	@Test
@@ -168,7 +188,7 @@ class UserControllerUnitTest {
 	    mvc.perform(put("/user/{id}", 1)
 	       .contentType(MediaType.APPLICATION_JSON)
 	       .content(asJsonString(userToPut)))
-	       .andExpect(status().isCreated())
+	       .andExpect(status().isOk())
 	       .andExpect(jsonPath("$.id", is(1)))
 	       .andExpect(jsonPath("$.firstName", is(userToReturn.getFirstName())))
 	       .andExpect(jsonPath("$.lastName", is(userToReturn.getLastName())));;
